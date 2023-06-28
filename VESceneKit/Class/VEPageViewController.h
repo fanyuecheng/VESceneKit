@@ -11,7 +11,6 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// 滚动方向
 typedef NS_ENUM(NSUInteger, VEPageItemMoveDirection) {
     VEPageItemMoveDirectionUnknown,
     VEPageItemMoveDirectionPrevious,
@@ -19,7 +18,7 @@ typedef NS_ENUM(NSUInteger, VEPageItemMoveDirection) {
 };
 
 @class VEPageViewController;
-/// Cell Protocol
+
 @protocol VEPageItem <NSObject>
 
 @optional
@@ -32,7 +31,6 @@ typedef NS_ENUM(NSUInteger, VEPageItemMoveDirection) {
 
 @end
 
-/// Page DataSource
 @protocol VEPageDataSource <NSObject>
 
 @required
@@ -59,7 +57,7 @@ typedef NS_ENUM(NSUInteger, VEPageItemMoveDirection) {
            willDisplayItem:(id<VEPageItem>)viewController;
 
 - (void)pageViewController:(VEPageViewController *)pageViewController
-         didDisplayItem:(id<VEPageItem>)viewController;
+            didDisplayItem:(id<VEPageItem>)viewController;
 
 @end
 
