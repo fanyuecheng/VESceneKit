@@ -369,6 +369,24 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     [self _reloadDataWithAppearanceTransition:YES];
 }
 
+- (void)reloadPreData {
+    if (_currentIndex > 0) {
+        [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex - 1) * self.scrollView.frame.size.height) animated:YES];
+    }
+}
+
+- (void)reloadNextData {
+    if (_currentIndex < self.itemCount) {
+        [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex + 1) * self.scrollView.frame.size.height) animated:YES];
+    }
+}
+
+- (void)reloadDataWithPageIndex:(NSInteger)index animated:(BOOL)animated {
+    if (index > 0 && index < self.itemCount) {
+        [self.scrollView setContentOffset:CGPointMake(0, index * self.scrollView.frame.size.height) animated:animated];
+    }
+}
+
 - (void)invalidateLayout {
     [self _reloadDataWithAppearanceTransition:NO];
 }

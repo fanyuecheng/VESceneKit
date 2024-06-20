@@ -70,11 +70,19 @@ typedef NS_ENUM(NSUInteger, VEPageItemMoveDirection) {
 /// 数据源接收
 @property (nonatomic, weak)   id<VEPageDataSource>dataSource;
 /// 内部承载滚动的View
-- (UIScrollView *)scrollView;
+@property (nonatomic, strong, readonly) UIScrollView *scrollView;
+/// 当前item
+@property (nonatomic, strong, readonly) UIViewController<VEPageItem> *currentViewController;
 /// 从复用池中获得一个item，同UITableView方法
 - (__kindof UIViewController<VEPageItem> *)dequeueItemForReuseIdentifier:(NSString *)reuseIdentifier;
 /// 完全刷新，包括content size、layout、item的生命周期
 - (void)reloadData;
+/// 刷新pre
+- (void)reloadPreData;
+/// 刷新next
+- (void)reloadNextData;
+/// 刷新index
+- (void)reloadDataWithPageIndex:(NSInteger)index animated:(BOOL)animated;
 /// 刷新content size、layout，不刷新item的生命周期
 - (void)invalidateLayout;
 /// 仅刷新content size
