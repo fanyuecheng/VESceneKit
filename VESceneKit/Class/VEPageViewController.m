@@ -143,17 +143,22 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 #pragma mark - Private Methods
 - (CGFloat)_viewWidth {
-    return self.view.frame.size.width;
+    return CGRectGetWidth(self.view.frame);
 }
 
 - (CGFloat)_viewHeight {
-    return self.view.frame.size.height;
+    return CGRectGetHeight(self.view.frame);
 }
 
 - (void)_layoutChildViewControllers {
     [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-        obj.view.frame = CGRectMake(obj.view.frame.origin.x, obj.view.frame.origin.y, self._viewWidth, self._viewHeight);
+        if (self.isVerticalScroll) {
+            obj.view.frame = CGRectMake(0, idx * self._viewHeight, self._viewWidth, self._viewHeight);
+        } else {
+            obj.view.frame = CGRectMake(idx * self._viewWidth, 0, self._viewWidth, self._viewHeight);
+        }
     }];
+    [self reloadContentSize];
 }
 
 - (void)_reloadDataIfNeeded {
@@ -421,17 +426,14 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 - (UIScrollView *)scrollView {
     if (!_scrollView) {
         _scrollView = [[UIScrollView alloc] init];
-        _scrollView.backgroundColor = [UIColor blackColor];
-        _scrollView.showsVerticalScrollIndicator = NO;
-        _scrollView.showsHorizontalScrollIndicator = NO;
+        _scrollView.backgroundColor = UIColor.blackColor;
+        _scrollView.delegate = self;
+        _scrollView.scrollsToTop = NO;
         _scrollView.pagingEnabled = YES;
         _scrollView.directionalLockEnabled = YES;
-        _scrollView.delegate = self;
-        if (@available(iOS 11.0, *)) {
-            self.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-        } else {
-            self.automaticallyAdjustsScrollViewInsets = NO;
-        }
+        _scrollView.showsVerticalScrollIndicator = NO;
+        _scrollView.showsHorizontalScrollIndicator = NO;
+        _scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     }
     return _scrollView;
 }
@@ -572,6 +574,14 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (void)scrollViewDidEndScrollingAnimation:(UIScrollView *)scrollView {
     [self _scrollViewDidStopScroll];
+}
+
+- (BOOL)shouldAutorotate {
+    return YES;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskAll;
 }
 
 @end

@@ -62,8 +62,6 @@
         _pageContainer = [VEPageViewController new];
         _pageContainer.dataSource = self;
         _pageContainer.delegate = self;
-        _pageContainer.scrollView.directionalLockEnabled = YES;
-        _pageContainer.scrollView.scrollsToTop = NO;
     }
     return _pageContainer;
 }
