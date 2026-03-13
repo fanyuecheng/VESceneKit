@@ -226,6 +226,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
         if (obj.veIndex == index) {
             findViewController = obj;
+            *stop = YES;
         }
     }];
     return findViewController;
@@ -256,7 +257,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     if (_delegateHas.hasDidEndDisplayItem) {
         [self.delegate pageViewController:self didDisplayItem:lastViewController];
     }
-    [lastViewController performSelector:@selector(viewDidDisappear:) withObject:@(YES)];
+    [lastViewController endAppearanceTransition];
     lastViewController.veTransitioning = NO;
     [self.currentViewController endAppearanceTransition];
     self.scrollView.panGestureRecognizer.enabled = YES;
@@ -314,13 +315,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     
     NSMutableArray *removedViewController = [[NSMutableArray alloc] init];
     [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull vc, NSUInteger idx, BOOL * _Nonnull stop) {
-        __block BOOL findVC = NO;
-        [addedViewControllers enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-            if (vc == obj) {
-                findVC = YES;
-            }
-        }];
-        if (!findVC) {
+        if (![addedViewControllers containsObject:vc]) {
             [removedViewController addObject:vc];
         }
     }];
@@ -472,7 +467,6 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     CGFloat offsetABS = offset - itemWidth * self.currentIndex;
     UIViewController *changeToViewController = nil;
     CGFloat progress = fabs(offsetABS) / itemWidth;
-    NSLog(@"zxy check abs offset = %lf", offsetABS);
     if (offsetABS > 0 && self.currentDirection != VEPageItemMoveDirectionNext) {
         if (self.currentIndex == self.itemCount - 1) {
             return;
@@ -543,11 +537,10 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
         offset = targetOffset.x;
         itemLength = self._viewWidth;
     }
-    NSUInteger idx = offset / itemLength;
+    NSUInteger idx = round(offset / itemLength);
     UIViewController<VEPageItem> *targetVC = [self _childViewControllerAtIndex:idx];
     if (targetVC != self.currentViewController) {
         if (targetVC.veTransitioning) { // fix unpair case
-            [targetVC performSelector:@selector(viewDidAppear:) withObject:@(YES)];
             scrollView.panGestureRecognizer.enabled = NO;
         }
         [targetVC endAppearanceTransition];
@@ -582,6 +575,11 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
     return UIInterfaceOrientationMaskAll;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    [self.cacheViewControllers removeAllObjects];
 }
 
 @end
