@@ -10,7 +10,7 @@
 #import "VEPageViewController.h"
 #import <objc/message.h>
 
-NSUInteger const VEPageMaxCount = NSIntegerMax;
+NSUInteger const VEPageMaxCount = NSUIntegerMax;
 
 @interface UIViewController (VEPageViewControllerItem)
 
@@ -70,7 +70,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 @property (nonatomic, strong) UIScrollView *scrollView;
 
-@property (nonatomic, strong) NSMutableArray<UIViewController<VEPageItem> *> *viewControllers;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIViewController<VEPageItem> *> *activeViewControllers;
 
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableArray<UIViewController<VEPageItem> *> *> *cacheViewControllers;
 
@@ -99,15 +99,19 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 }
 
 - (void)commonInit {
-    self.viewControllers = [NSMutableArray array];
+    self.activeViewControllers = [NSMutableDictionary dictionary];
     self.cacheViewControllers = [NSMutableDictionary dictionary];
-    [self.view addSubview:self.scrollView];
     self.currentIndex = VEPageMaxCount;
     self.needReloadData = YES;
 }
 
 - (BOOL)shouldAutomaticallyForwardAppearanceMethods {
     return NO;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self.view addSubview:self.scrollView];
 }
 
 - (void)viewWillLayoutSubviews {
@@ -119,12 +123,16 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.currentViewController beginAppearanceTransition:NO animated:YES];
+    if (self.currentViewController) {
+        [self.currentViewController beginAppearanceTransition:NO animated:YES];
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
-    [self.currentViewController endAppearanceTransition];
+    if (self.currentViewController) {
+        [self.currentViewController endAppearanceTransition];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -151,14 +159,21 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 }
 
 - (void)_layoutChildViewControllers {
-    [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+    CGFloat viewWidth = self._viewWidth;
+    CGFloat viewHeight = self._viewHeight;
+    [self.activeViewControllers enumerateKeysAndObjectsUsingBlock:^(NSNumber *key, UIViewController<VEPageItem> *obj, BOOL *stop) {
+        NSUInteger veIdx = key.unsignedIntegerValue;
         if (self.isVerticalScroll) {
-            obj.view.frame = CGRectMake(0, idx * self._viewHeight, self._viewWidth, self._viewHeight);
+            obj.view.frame = CGRectMake(0, veIdx * viewHeight, viewWidth, viewHeight);
         } else {
-            obj.view.frame = CGRectMake(idx * self._viewWidth, 0, self._viewWidth, self._viewHeight);
+            obj.view.frame = CGRectMake(veIdx * viewWidth, 0, viewWidth, viewHeight);
         }
     }];
-    [self reloadContentSize];
+    if (self.isVerticalScroll) {
+        self.scrollView.contentSize = CGSizeMake(0, viewHeight * self.itemCount);
+    } else {
+        self.scrollView.contentSize = CGSizeMake(viewWidth * self.itemCount, 0);
+    }
 }
 
 - (void)_reloadDataIfNeeded {
@@ -168,17 +183,16 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 }
 
 - (void)_clearData {
-    [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-        [self _removeChildViewControllerFromDataSource:obj];
-    }];
-    [self.viewControllers removeAllObjects];
+    for (UIViewController<VEPageItem> *vc in self.activeViewControllers.allValues) {
+        [self _removeChildViewControllerFromDataSource:vc];
+    }
     self.currentDirection = VEPageItemMoveDirectionUnknown;
     self.itemCount = 0;
     self.currentIndex = VEPageMaxCount;
 }
 
 - (UIViewController<VEPageItem> *)_addChildViewControllerFromDataSourceIndex:(NSUInteger)index {
-    UIViewController<VEPageItem> *viewController = [self _childViewControllerAtIndex:index];
+    UIViewController<VEPageItem> *viewController = self.activeViewControllers[@(index)];
     if (viewController.veTransitioning) {
         viewController.veTransitioning = NO;
         [viewController endAppearanceTransition];
@@ -188,7 +202,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     if (!viewController) {
         [NSException raise:VEPageViewControllerExceptionKey format:@"VEPageViewController(%p) pageViewController:pageForItemAtIndex: must return a no nil instance", self];
     }
-    
+
     [self addChildViewController:viewController];
     if (self.isVerticalScroll) {
         viewController.view.frame = CGRectMake(0, index * self._viewHeight, self._viewWidth, self._viewHeight);
@@ -198,6 +212,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     [self.scrollView addSubview:viewController.view];
     [viewController didMoveToParentViewController:self];
     viewController.veIndex = index;
+    self.activeViewControllers[@(index)] = viewController;
     if ([viewController respondsToSelector:@selector(itemDidLoad)]) {
         [viewController itemDidLoad];
     }
@@ -208,6 +223,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     [removedViewController willMoveToParentViewController:nil];
     [removedViewController.view removeFromSuperview];
     [removedViewController removeFromParentViewController];
+    [self.activeViewControllers removeObjectForKey:@(removedViewController.veIndex)];
     removedViewController.veIndex = VEPageMaxCount;
     if ([removedViewController respondsToSelector:@selector(reuseIdentifier)] && removedViewController.reuseIdentifier.length) {
         NSMutableArray<UIViewController<VEPageItem> *>*reuseViewControllers = [self.cacheViewControllers objectForKey:removedViewController.reuseIdentifier];
@@ -222,34 +238,27 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 }
 
 - (UIViewController<VEPageItem> *)_childViewControllerAtIndex:(NSUInteger)index {
-    __block UIViewController<VEPageItem> *findViewController = nil;
-    [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-        if (obj.veIndex == index) {
-            findViewController = obj;
-            *stop = YES;
-        }
-    }];
-    return findViewController;
+    return self.activeViewControllers[@(index)];
 }
 
 - (void)_shouldChangeToNextPage {
     UIViewController<VEPageItem> *lastViewController = self.currentViewController;
-    CGFloat page = _currentIndex;
-    if (self.currentDirection == VEPageItemMoveDirectionNext) {
-        page = self.currentIndex + 1;
-    } else {
-        page = self.currentIndex - 1;
-    }
+    CGFloat page;
     if (self.isVerticalScroll) {
         page = self.scrollView.contentOffset.y / self._viewHeight + 0.5;
     } else {
         page = self.scrollView.contentOffset.x / self._viewWidth + 0.5;
     }
     if (self.currentDirection == VEPageItemMoveDirectionUnknown) {
+        self.shouldChangeToNextPage = NO;
         return;
     } else if (self.currentIndex == 0 && self.currentDirection == VEPageItemMoveDirectionPrevious) {
+        self.shouldChangeToNextPage = NO;
+        self.currentDirection = VEPageItemMoveDirectionUnknown;
         return;
     } else if (self.currentIndex == (self.itemCount - 1) && self.currentDirection == VEPageItemMoveDirectionNext) {
+        self.shouldChangeToNextPage = NO;
+        self.currentDirection = VEPageItemMoveDirectionUnknown;
         return;
     } else {
         [self _setCurrentIndex:(NSInteger)page autoAdjustOffset:NO];
@@ -259,7 +268,9 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     }
     [lastViewController endAppearanceTransition];
     lastViewController.veTransitioning = NO;
-    [self.currentViewController endAppearanceTransition];
+    if (self.currentViewController.veTransitioning) {
+        [self.currentViewController endAppearanceTransition];
+    }
     self.scrollView.panGestureRecognizer.enabled = YES;
     self.currentViewController.veTransitioning = NO;
     self.currentDirection = VEPageItemMoveDirectionUnknown;
@@ -268,7 +279,7 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (void)_reloadDataWithAppearanceTransition:(BOOL)appearanceTransition {
     self.needReloadData = YES;
-    NSInteger preIndex = self.currentIndex;
+    NSUInteger preIndex = self.currentIndex;
     [self _clearData];
     if (_dataSourceHas.hasIsVerticalPageScrollInPageViewController) {
         self.isVerticalScroll = [self.dataSource shouldScrollVertically:self];
@@ -301,36 +312,32 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     if (currentIndex > self.itemCount - 1) {
         [NSException raise:VEPageViewControllerExceptionKey format:@"VEPageViewController(%p) currentIndex out of bounds %lu", self, (unsigned long)currentIndex];
     }
-    NSMutableArray *addedViewControllers = [[NSMutableArray alloc] init];
-    UIViewController<VEPageItem> *currentVieController = [self _addChildViewControllerFromDataSourceIndex:currentIndex];
-    [addedViewControllers addObject:currentVieController];
-    if (currentIndex != 0) {
-        UIViewController<VEPageItem> *nextViewController = [self _addChildViewControllerFromDataSourceIndex:currentIndex - 1];
-        [addedViewControllers addObject:nextViewController];
+
+    // Build the set of indices that should remain active: current ± 1
+    NSMutableSet<NSNumber *> *requiredIndices = [NSMutableSet setWithCapacity:3];
+    [requiredIndices addObject:@(currentIndex)];
+    if (currentIndex > 0) {
+        [requiredIndices addObject:@(currentIndex - 1)];
     }
-    if (self.itemCount > 1 && currentIndex != self.itemCount - 1) {
-        UIViewController<VEPageItem> *preViewController = [self _addChildViewControllerFromDataSourceIndex:currentIndex + 1];
-        [addedViewControllers addObject:preViewController];
+    if (currentIndex < self.itemCount - 1) {
+        [requiredIndices addObject:@(currentIndex + 1)];
     }
-    
-    NSMutableArray *removedViewController = [[NSMutableArray alloc] init];
-    [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull vc, NSUInteger idx, BOOL * _Nonnull stop) {
-        if (![addedViewControllers containsObject:vc]) {
-            [removedViewController addObject:vc];
+
+    // Remove VCs whose index is no longer in the window
+    for (NSNumber *key in self.activeViewControllers.allKeys) {
+        if (![requiredIndices containsObject:key]) {
+            [self _removeChildViewControllerFromDataSource:self.activeViewControllers[key]];
         }
-    }];
-    [removedViewController enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-        [self _removeChildViewControllerFromDataSource:obj];
-    }];
-    [addedViewControllers enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-        if (![self.viewControllers containsObject:obj]) {
-            [self.viewControllers addObject:obj];
-        }
-    }];
-    [self.viewControllers removeObjectsInArray:removedViewController];
+    }
+
+    // Add VCs that are now in window but not yet loaded
+    for (NSNumber *key in requiredIndices) {
+        [self _addChildViewControllerFromDataSourceIndex:key.unsignedIntegerValue];
+    }
+
     UIViewController *lastViewController = self.currentViewController;
     _currentIndex = currentIndex;
-    self.currentViewController = [self _childViewControllerAtIndex:_currentIndex];
+    self.currentViewController = self.activeViewControllers[@(currentIndex)];
     if (autoAdjustOffset) {
         if (self.isVerticalScroll) {
             self.scrollView.contentOffset = CGPointMake(0, currentIndex * self._viewHeight);
@@ -349,6 +356,15 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 - (void)_scrollViewDidStopScroll {
     if (self.shouldChangeToNextPage) {
         [self _shouldChangeToNextPage];
+    } else if (self.currentDirection != VEPageItemMoveDirectionUnknown) {
+        // Partial swipe snapped back without completing a page transition — clean up
+        for (UIViewController<VEPageItem> *vc in self.activeViewControllers.allValues) {
+            if (vc.veTransitioning) {
+                [vc endAppearanceTransition];
+                vc.veTransitioning = NO;
+            }
+        }
+        self.currentDirection = VEPageItemMoveDirectionUnknown;
     }
 }
 
@@ -358,7 +374,8 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     NSMutableArray<UIViewController<VEPageItem> *> *cacheKeyViewControllers = [self.cacheViewControllers objectForKey:reuseIdentifier];
     if (!cacheKeyViewControllers) return nil;
     UIViewController<VEPageItem> *viewController = [cacheKeyViewControllers firstObject];
-    [cacheKeyViewControllers removeObject:viewController];
+    if (!viewController) return nil;
+    [cacheKeyViewControllers removeObjectAtIndex:0];
     if ([viewController respondsToSelector:@selector(prepareForReuse)]) {
         [viewController prepareForReuse];
     }
@@ -371,19 +388,31 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (void)reloadPreData {
     if (_currentIndex > 0) {
-        [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex - 1) * self.scrollView.frame.size.height) animated:YES];
+        if (self.isVerticalScroll) {
+            [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex - 1) * self._viewHeight) animated:YES];
+        } else {
+            [self.scrollView setContentOffset:CGPointMake((self.currentIndex - 1) * self._viewWidth, 0) animated:YES];
+        }
     }
 }
 
 - (void)reloadNextData {
-    if (_currentIndex < self.itemCount) {
-        [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex + 1) * self.scrollView.frame.size.height) animated:YES];
+    if (_currentIndex < self.itemCount - 1) {
+        if (self.isVerticalScroll) {
+            [self.scrollView setContentOffset:CGPointMake(0, (self.currentIndex + 1) * self._viewHeight) animated:YES];
+        } else {
+            [self.scrollView setContentOffset:CGPointMake((self.currentIndex + 1) * self._viewWidth, 0) animated:YES];
+        }
     }
 }
 
 - (void)reloadDataWithPageIndex:(NSInteger)index animated:(BOOL)animated {
-    if (index > 0 && index < self.itemCount) {
-        [self.scrollView setContentOffset:CGPointMake(0, index * self.scrollView.frame.size.height) animated:animated];
+    if (index >= 0 && index < self.itemCount) {
+        if (self.isVerticalScroll) {
+            [self.scrollView setContentOffset:CGPointMake(0, index * self._viewHeight) animated:animated];
+        } else {
+            [self.scrollView setContentOffset:CGPointMake(index * self._viewWidth, 0) animated:animated];
+        }
     }
 }
 
@@ -395,22 +424,15 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     if (_dataSourceHas.hasNumberOfItemInPageViewController) {
         NSInteger preItemCount = self.itemCount;
         self.itemCount = [_dataSource numberOfItemInPageViewController:self];
+        BOOL resetContentOffset = preItemCount > self.itemCount;
         if (!self.isVerticalScroll) {
-            BOOL resetContentOffset = NO;
-            if (preItemCount < self.itemCount) {
-                resetContentOffset = YES;
-            }
             [self.scrollView setContentSize:CGSizeMake(self._viewWidth * self.itemCount, 0)];
-            if (resetContentOffset && self.scrollView.contentOffset.x > self.scrollView.contentSize.width - self._viewWidth) {
+            if (resetContentOffset && self.itemCount > 0 && self.scrollView.contentOffset.x > self.scrollView.contentSize.width - self._viewWidth) {
                 self.scrollView.contentOffset = CGPointMake(self._viewWidth * (self.itemCount - 1), 0);
             }
         } else {
-            BOOL resetContentOffset = NO;
-            if (preItemCount < self.itemCount) {
-                resetContentOffset = YES;
-            }
             [self.scrollView setContentSize:CGSizeMake(0, self._viewHeight * self.itemCount)];
-            if (resetContentOffset && self.scrollView.contentOffset.y > self.scrollView.contentSize.height - self._viewHeight) {
+            if (resetContentOffset && self.itemCount > 0 && self.scrollView.contentOffset.y > self.scrollView.contentSize.height - self._viewHeight) {
                 self.scrollView.contentOffset = CGPointMake(0, self._viewHeight * (self.itemCount - 1));
             }
         }
@@ -435,20 +457,16 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 
 - (void)setDelegate:(id<VEPageDelegate>)delegate {
     _delegate = delegate;
-    if (_delegate) {
-        _delegateHas.hasWillDisplayItem = [_delegate respondsToSelector:@selector(pageViewController:willDisplayItem:)];
-        _delegateHas.hasDidEndDisplayItem = [_delegate respondsToSelector:@selector(pageViewController:didDisplayItem:)];
-        _delegateHas.hasDidScrollChangeDirection = [_delegate respondsToSelector:@selector(pageViewController:didScrollChangeDirection:offsetProgress:)];
-    }
+    _delegateHas.hasWillDisplayItem = [_delegate respondsToSelector:@selector(pageViewController:willDisplayItem:)];
+    _delegateHas.hasDidEndDisplayItem = [_delegate respondsToSelector:@selector(pageViewController:didDisplayItem:)];
+    _delegateHas.hasDidScrollChangeDirection = [_delegate respondsToSelector:@selector(pageViewController:didScrollChangeDirection:offsetProgress:)];
 }
 
 - (void)setDataSource:(id<VEPageDataSource>)dataSource {
     _dataSource = dataSource;
-    if (_dataSource) {
-        _dataSourceHas.hasPageForItemAtIndex = [_dataSource respondsToSelector:@selector(pageViewController:pageForItemAtIndex:)];
-        _dataSourceHas.hasNumberOfItemInPageViewController = [_dataSource respondsToSelector:@selector(numberOfItemInPageViewController:)];
-        _dataSourceHas.hasIsVerticalPageScrollInPageViewController = [_dataSource respondsToSelector:@selector(shouldScrollVertically:)];
-    }
+    _dataSourceHas.hasPageForItemAtIndex = [_dataSource respondsToSelector:@selector(pageViewController:pageForItemAtIndex:)];
+    _dataSourceHas.hasNumberOfItemInPageViewController = [_dataSource respondsToSelector:@selector(numberOfItemInPageViewController:)];
+    _dataSourceHas.hasIsVerticalPageScrollInPageViewController = [_dataSource respondsToSelector:@selector(shouldScrollVertically:)];
     _needReloadData = YES;
 }
 
@@ -463,64 +481,64 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
     if (self.isVerticalScroll && scrollView.contentOffset.x != 0) return;
     if (!self.isVerticalScroll && scrollView.contentOffset.y != 0) return;
     CGFloat offset = self.isVerticalScroll ? scrollView.contentOffset.y : scrollView.contentOffset.x;
-    CGFloat itemWidth = self.isVerticalScroll ? self._viewHeight : self._viewWidth;
-    CGFloat offsetABS = offset - itemWidth * self.currentIndex;
-    UIViewController *changeToViewController = nil;
-    CGFloat progress = fabs(offsetABS) / itemWidth;
+    CGFloat pageSize = self.isVerticalScroll ? self._viewHeight : self._viewWidth;
+    CGFloat offsetABS = offset - pageSize * self.currentIndex;
+    CGFloat progress = fabs(offsetABS) / pageSize;
     if (offsetABS > 0 && self.currentDirection != VEPageItemMoveDirectionNext) {
         if (self.currentIndex == self.itemCount - 1) {
             return;
         }
+        // Direction reversed Prev→Next: end the orphaned prev VC's appearance transition
+        if (self.currentDirection == VEPageItemMoveDirectionPrevious) {
+            UIViewController<VEPageItem> *prevVC = [self _childViewControllerAtIndex:self.currentIndex - 1];
+            if (prevVC.veTransitioning) {
+                [prevVC endAppearanceTransition];
+                prevVC.veTransitioning = NO;
+            }
+        }
         self.currentDirection = VEPageItemMoveDirectionNext;
-        if (progress >= 0.0) {
-            if (!self.currentViewController.veTransitioning) {
-                self.currentViewController.veTransitioning = YES;
-                [self.currentViewController beginAppearanceTransition:NO animated:YES];
-            }
-            UIViewController<VEPageItem> *nextViewController = [self _childViewControllerAtIndex:self.currentIndex + 1];
-            if (!nextViewController.veTransitioning) {
-                nextViewController.veTransitioning = YES;
-                [nextViewController beginAppearanceTransition:YES animated:YES];
-                changeToViewController = nextViewController;
-            }
-            if (_delegateHas.hasWillDisplayItem) {
-                [self.delegate pageViewController:self willDisplayItem:nextViewController];
-            }
+        if (!self.currentViewController.veTransitioning) {
+            self.currentViewController.veTransitioning = YES;
+            [self.currentViewController beginAppearanceTransition:NO animated:YES];
+        }
+        UIViewController<VEPageItem> *nextViewController = [self _childViewControllerAtIndex:self.currentIndex + 1];
+        if (!nextViewController.veTransitioning) {
+            nextViewController.veTransitioning = YES;
+            [nextViewController beginAppearanceTransition:YES animated:YES];
+        }
+        if (_delegateHas.hasWillDisplayItem) {
+            [self.delegate pageViewController:self willDisplayItem:nextViewController];
         }
     } else if (offsetABS < 0 && self.currentDirection != VEPageItemMoveDirectionPrevious) {
         if (self.currentIndex == 0) return;
+        // Direction reversed Next→Prev: end the orphaned next VC's appearance transition
+        if (self.currentDirection == VEPageItemMoveDirectionNext) {
+            UIViewController<VEPageItem> *nextVC = [self _childViewControllerAtIndex:self.currentIndex + 1];
+            if (nextVC.veTransitioning) {
+                [nextVC endAppearanceTransition];
+                nextVC.veTransitioning = NO;
+            }
+        }
         self.currentDirection = VEPageItemMoveDirectionPrevious;
-        if (progress >= 0.0) {
-            if (!self.currentViewController.veTransitioning) {
-                self.currentViewController.veTransitioning = YES;
-                [self.currentViewController beginAppearanceTransition:NO animated:YES];
-            }
-            UIViewController<VEPageItem> *preViewController = [self _childViewControllerAtIndex:self.currentIndex - 1];
-            if (!preViewController.veTransitioning) {
-                preViewController.veTransitioning = YES;
-                [preViewController beginAppearanceTransition:YES animated:YES];
-                changeToViewController = preViewController;
-            }
-            if (_delegateHas.hasWillDisplayItem) {
-                [self.delegate pageViewController:self willDisplayItem:preViewController];
-            }
+        if (!self.currentViewController.veTransitioning) {
+            self.currentViewController.veTransitioning = YES;
+            [self.currentViewController beginAppearanceTransition:NO animated:YES];
+        }
+        UIViewController<VEPageItem> *preViewController = [self _childViewControllerAtIndex:self.currentIndex - 1];
+        if (!preViewController.veTransitioning) {
+            preViewController.veTransitioning = YES;
+            [preViewController beginAppearanceTransition:YES animated:YES];
+        }
+        if (_delegateHas.hasWillDisplayItem) {
+            [self.delegate pageViewController:self willDisplayItem:preViewController];
         }
     }
     if (_delegateHas.hasDidScrollChangeDirection) {
         [self.delegate pageViewController:self didScrollChangeDirection:self.currentDirection offsetProgress:(progress > 1) ? 1 : progress];
     }
-    if (progress < 0.0) {
-        if (self.currentViewController.veTransitioning) {
-            self.currentViewController.veTransitioning = NO;
-        }
-        if (changeToViewController.veTransitioning) {
-            changeToViewController.veTransitioning = NO;
-        }
-        self.currentDirection = VEPageItemMoveDirectionUnknown;
-    }
     if (progress >= 1.0) {
         self.shouldChangeToNextPage = YES;
-        if (progress > 1 && self.shouldChangeToNextPage) {
+        if (progress > 1) {
             [self _shouldChangeToNextPage];
         }
     }
@@ -529,28 +547,31 @@ static NSString *VEPageViewControllerExceptionKey = @"VEPageViewControllerExcept
 - (void)scrollViewWillEndDragging:(UIScrollView *)scrollView withVelocity:(CGPoint)velocity targetContentOffset:(inout CGPoint *)targetContentOffset {
     CGPoint targetOffset = *targetContentOffset;
     CGFloat offset;
-    CGFloat itemLength;
+    CGFloat pageSize;
     if (self.isVerticalScroll) {
         offset = targetOffset.y;
-        itemLength = self._viewHeight;
+        pageSize = self._viewHeight;
     } else {
         offset = targetOffset.x;
-        itemLength = self._viewWidth;
+        pageSize = self._viewWidth;
     }
-    NSUInteger idx = round(offset / itemLength);
+    NSUInteger idx = round(offset / pageSize);
     UIViewController<VEPageItem> *targetVC = [self _childViewControllerAtIndex:idx];
     if (targetVC != self.currentViewController) {
         if (targetVC.veTransitioning) { // fix unpair case
             scrollView.panGestureRecognizer.enabled = NO;
         }
         [targetVC endAppearanceTransition];
+        targetVC.veTransitioning = NO;
     }
 }
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
-    [self.viewControllers enumerateObjectsUsingBlock:^(UIViewController<VEPageItem> * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+    self.currentDirection = VEPageItemMoveDirectionUnknown;
+    [self.activeViewControllers enumerateKeysAndObjectsUsingBlock:^(NSNumber *key, UIViewController<VEPageItem> *obj, BOOL *stop) {
         if (obj.veTransitioning) {
             obj.veTransitioning = NO;
+            [obj endAppearanceTransition];
         }
     }];
 }

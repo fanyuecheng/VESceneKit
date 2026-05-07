@@ -10,6 +10,8 @@
 
 @interface TestCellViewController : UIViewController <VEPageItem>
 
+@property (nonatomic, strong) UILabel *label;
+
 @end
 
 @implementation TestCellViewController
@@ -19,8 +21,17 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
 
+    self.label = [UILabel new];
+    self.label.textAlignment = NSTextAlignmentCenter;
+    [self.view addSubview:self.label];
 }
   
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    
+    self.label.frame = self.view.bounds;
+}
+
 - (void)prepareForReuse {
     
 }
@@ -76,6 +87,7 @@
         cell.reuseIdentifier = @"TestCellViewController";
     }
     cell.view.backgroundColor = [self randomColor];
+    cell.label.text = [@(index) stringValue];
     return cell;
 }
 
@@ -84,7 +96,7 @@
 }
 
 - (BOOL)shouldScrollVertically:(VEPageViewController *)pageViewController {
-    return YES;
+    return NO;
 }
 
 #pragma mark - VEPageDelegate
